@@ -241,7 +241,7 @@ static NSTimeInterval SVHTTPRequestTimeoutInterval = 20;
         else if([parameters isKindOfClass:[NSDictionary class]]) {
             __block BOOL hasData = NO;
             NSDictionary *paramsDict = (NSDictionary*)parameters;
-        
+            
             [paramsDict.allValues enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
                 if([obj isKindOfClass:[NSData class]] || [obj isKindOfClass:[NSURL class]])
                     hasData = YES;
@@ -294,7 +294,7 @@ static NSTimeInterval SVHTTPRequestTimeoutInterval = 20;
                         else {
                             [postData appendData:[@"Content-Type: application/octet-stream\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding]];
                         }
-
+                        
                         [postData appendData:data];
                         [postData appendData:[@"\r\n" dataUsingEncoding:NSUTF8StringEncoding]];
                         dataIdx++;
@@ -518,8 +518,9 @@ static NSTimeInterval SVHTTPRequestTimeoutInterval = 20;
         else
             [self.operationData appendData:data];
     });
-    
     if(self.operationProgressBlock) {
+        self.timeoutTimer = nil;
+        self.timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:self.timeoutInterval target:self selector:@selector(requestTimeout) userInfo:nil repeats:NO];
         //If its -1 that means the header does not have the content size value
         if(self.expectedContentLength != -1) {
             self.receivedContentLength += data.length;
@@ -533,6 +534,8 @@ static NSTimeInterval SVHTTPRequestTimeoutInterval = 20;
 
 - (void)connection:(NSURLConnection *)connection didSendBodyData:(NSInteger)bytesWritten totalBytesWritten:(NSInteger)totalBytesWritten totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite {
     if(self.operationProgressBlock && [self.operationRequest.HTTPMethod isEqualToString:@"POST"]) {
+        self.timeoutTimer = nil;
+        self.timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:self.timeoutInterval target:self selector:@selector(requestTimeout) userInfo:nil repeats:NO];
         self.operationProgressBlock((float)totalBytesWritten/(float)totalBytesExpectedToWrite);
     }
 }
@@ -612,11 +615,11 @@ static NSTimeInterval SVHTTPRequestTimeoutInterval = 20;
 
 - (NSString*)encodedURLParameterString {
     NSString *result = (__bridge_transfer NSString*)CFURLCreateStringByAddingPercentEscapes(kCFAllocatorDefault,
-                                                                                            (__bridge CFStringRef)self,
-                                                                                            NULL,
-                                                                                            CFSTR(":/=,!$&'()*+;[]@#?^%\"`<>{}\\|~ "),
-                                                                                            kCFStringEncodingUTF8);
-	return result;
+     (__bridge CFStringRef)self,
+     NULL,
+     CFSTR(":/=,!$&'()*+;[]@#?^%\"`<>{}\\|~ "),
+     kCFStringEncodingUTF8);
+    return result;
 }
 
 @end
@@ -635,53 +638,53 @@ static char encodingTable[64] = {
 @implementation NSData (SVHTTPRequest)
 
 - (NSString *)base64EncodingWithLineLength:(unsigned int) lineLength {
-	const unsigned char	*bytes = [self bytes];
-	NSMutableString *result = [NSMutableString stringWithCapacity:[self length]];
-	unsigned long ixtext = 0;
-	unsigned long lentext = [self length];
-	long ctremaining = 0;
-	unsigned char inbuf[3], outbuf[4];
-	short i = 0;
-	unsigned int charsonline = 0;
+    const unsigned char	*bytes = [self bytes];
+    NSMutableString *result = [NSMutableString stringWithCapacity:[self length]];
+    unsigned long ixtext = 0;
+    unsigned long lentext = [self length];
+    long ctremaining = 0;
+    unsigned char inbuf[3], outbuf[4];
+    short i = 0;
+    unsigned int charsonline = 0;
     short ctcopy = 0;
-	unsigned long ix = 0;
+    unsigned long ix = 0;
     
-	while( YES ) {
-		ctremaining = lentext - ixtext;
-		if( ctremaining <= 0 ) break;
+    while( YES ) {
+        ctremaining = lentext - ixtext;
+        if( ctremaining <= 0 ) break;
         
-		for( i = 0; i < 3; i++ ) {
-			ix = ixtext + i;
-			if( ix < lentext ) inbuf[i] = bytes[ix];
-			else inbuf [i] = 0;
-		}
+        for( i = 0; i < 3; i++ ) {
+            ix = ixtext + i;
+            if( ix < lentext ) inbuf[i] = bytes[ix];
+            else inbuf [i] = 0;
+        }
         
-		outbuf [0] = (inbuf [0] & 0xFC) >> 2;
-		outbuf [1] = ((inbuf [0] & 0x03) << 4) | ((inbuf [1] & 0xF0) >> 4);
-		outbuf [2] = ((inbuf [1] & 0x0F) << 2) | ((inbuf [2] & 0xC0) >> 6);
-		outbuf [3] = inbuf [2] & 0x3F;
-		ctcopy = 4;
+        outbuf [0] = (inbuf [0] & 0xFC) >> 2;
+        outbuf [1] = ((inbuf [0] & 0x03) << 4) | ((inbuf [1] & 0xF0) >> 4);
+        outbuf [2] = ((inbuf [1] & 0x0F) << 2) | ((inbuf [2] & 0xC0) >> 6);
+        outbuf [3] = inbuf [2] & 0x3F;
+        ctcopy = 4;
         
-		switch( ctremaining ) {
+        switch( ctremaining ) {
             case 1:
                 ctcopy = 2;
                 break;
             case 2:
                 ctcopy = 3;
                 break;
-		}
+        }
         
-		for( i = 0; i < ctcopy; i++ )
-			[result appendFormat:@"%c", encodingTable[outbuf[i]]];
+        for( i = 0; i < ctcopy; i++ )
+            [result appendFormat:@"%c", encodingTable[outbuf[i]]];
         
-		for( i = ctcopy; i < 4; i++ )
-			[result appendFormat:@"%c",'='];
+        for( i = ctcopy; i < 4; i++ )
+            [result appendFormat:@"%c",'='];
         
-		ixtext += 3;
-		charsonline += 4;
-	}
+        ixtext += 3;
+        charsonline += 4;
+    }
     
-	return result;
+    return result;
 }
 
 - (BOOL)isJPG {
